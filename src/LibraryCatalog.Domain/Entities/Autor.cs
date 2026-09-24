@@ -1,0 +1,41 @@
+using LibraryCatalog.Domain.Exceptions;
+
+namespace LibraryCatalog.Domain.Entities;
+
+public sealed class Autor
+{
+    private const int LongitudMaximaNombre = 150;
+    private readonly List<Libro> _libros = [];
+
+    public Guid Id { get; private set; }
+    public string Nombre { get; private set; } = null!;
+    public IReadOnlyCollection<Libro> Libros => _libros;
+
+    private Autor()
+    {
+    }
+
+    public Autor(string nombre)
+    {
+        Nombre = ValidarNombre(nombre);
+        Id = Guid.CreateVersion7();
+    }
+
+    private static string ValidarNombre(string nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            throw new ReglaDeNegocioException("El nombre del autor es obligatorio.");
+        }
+
+        string nombreNormalizado = nombre.Trim();
+
+        if (nombreNormalizado.Length > LongitudMaximaNombre)
+        {
+            throw new ReglaDeNegocioException(
+                $"El nombre del autor no puede superar los {LongitudMaximaNombre} caracteres.");
+        }
+
+        return nombreNormalizado;
+    }
+}
