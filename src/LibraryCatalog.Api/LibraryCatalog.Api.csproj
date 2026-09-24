@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>LibraryCatalog.Api-94a720fc-b96f-468d-a1e1-63318dfaeb8c</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
