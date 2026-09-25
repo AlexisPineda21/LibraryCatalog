@@ -1,4 +1,5 @@
 using LibraryCatalog.Domain.Entities;
+using LibraryCatalog.Infrastructure.Persistence.Seed;
 using Microsoft.EntityFrameworkCore;
 
 namespace LibraryCatalog.Infrastructure.Persistence;
@@ -17,6 +18,7 @@ public sealed class LibraryCatalogDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LibraryCatalogDbContext).Assembly);
+        modelBuilder.SembrarCatalogo();
 
         base.OnModelCreating(modelBuilder);
     }

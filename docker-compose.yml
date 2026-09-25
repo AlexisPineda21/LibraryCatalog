@@ -1,0 +1,30 @@
+# Capa de datos como proceso independiente del proceso de la API.
+# Levanta SQL Server en su propio contenedor, con puerto y volumen propios.
+#
+# Uso:
+#   1. Crear un archivo .env junto a este archivo con:
+#        MSSQL_SA_PASSWORD=Biblioteca_2026
+#      El archivo .env está en .gitignore, por lo que la contraseña no se versiona.
+#   2. docker compose up -d
+#   3. Registrar la cadena de conexión fuera del repositorio:
+#        dotnet user-secrets set "ConnectionStrings:LibraryCatalog" \
+#          "Server=localhost,1433;Database=LibraryCatalog;User Id=sa;Password=Biblioteca_2026;TrustServerCertificate=True" \
+#          --project src/LibraryCatalog.Api
+#   4. dotnet ef database update --project src/LibraryCatalog.Infrastructure --startup-project src/LibraryCatalog.Api
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: librarycatalog-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
