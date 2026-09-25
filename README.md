@@ -28,13 +28,14 @@ Las respuestas deberán incluir, según corresponda, el identificador, título, 
 - ASP.NET Core Web API.
 - Entity Framework Core 10.
 - SQL Server.
+- Docker, para ejecutar el motor de base de datos.
 - MSTest 4.
 - OpenAPI.
 - Git y GitHub.
 
 ## Estado actual
 
-La fase de arquitectura y dominio está terminada.
+Las fases de arquitectura y dominio, y de persistencia y base de datos, están terminadas.
 
 Actualmente el repositorio contiene:
 
@@ -49,8 +50,14 @@ Actualmente el repositorio contiene:
 - Registros de inyección de dependencias por capa.
 - 16 pruebas unitarias aprobadas.
 - API compilable y ejecutable con OpenAPI habilitado.
+- Cadena de conexión configurada y validada al registrar el contexto.
+- Migración inicial `InitialCreate` con el esquema completo.
+- Datos de prueba incluidos en la migración: 6 autores, 5 categorías y 10 libros.
+- Resiliencia de conexión ante fallos transitorios de red.
+- `docker-compose.yml` para levantar SQL Server como proceso independiente.
+- Script SQL de verificación de esquema, relaciones y datos.
 
-Todavía no existen migraciones, datos iniciales, queries CQRS, handlers ni endpoints del catálogo. Por ese motivo, el documento OpenAPI presenta actualmente una colección `paths` vacía. Este es el comportamiento esperado.
+Todavía no existen queries CQRS, handlers ni endpoints del catálogo. Por ese motivo, el documento OpenAPI presenta actualmente una colección `paths` vacía. Este es el comportamiento esperado.
 
 ## Estructura de la solución
 
@@ -72,6 +79,11 @@ LibraryCatalog.slnx
 Estructura física principal:
 
 ```text
+docker-compose.yml
+
+scripts/
+└── verificacion-catalogo.sql
+
 src/
 ├── LibraryCatalog.Domain/
 │   ├── Entities/
@@ -81,7 +93,9 @@ src/
 ├── LibraryCatalog.Infrastructure/
 │   └── Persistence/
 │       ├── Configurations/
-│       └── Repositories/
+│       ├── Migrations/
+│       ├── Repositories/
+│       └── Seed/
 └── LibraryCatalog.Api/
 
 tests/
@@ -129,7 +143,7 @@ Contiene contratos y será responsable de los casos de uso CQRS, DTO y handlers.
 
 ### Infrastructure
 
-Implementa persistencia con EF Core y SQL Server. Contiene el contexto, configuraciones Fluent API, repositorios de lectura y `AddInfrastructureServices`.
+Implementa persistencia con EF Core y SQL Server. Contiene el contexto, configuraciones Fluent API, repositorios de lectura, migraciones, datos de prueba y `AddInfrastructureServices`.
 
 ### API
 
@@ -219,7 +233,120 @@ Configuración relevante:
 - `DeleteBehavior.Restrict` en ambas relaciones.
 - Acceso por campo para las colecciones privadas de libros.
 
-No existe una migración inicial todavía. El integrante responsable de persistencia deberá crearla cuando se defina la instancia local de SQL Server.
+La migración inicial ya existe y está documentada en la sección Base de datos.
+
+## Base de datos
+
+El esquema y los datos de prueba se crean a partir de la migración `InitialCreate`, por lo que cualquier integrante levanta una base idéntica sin ejecutar scripts manuales.
+
+### Requisitos
+
+- .NET 10 SDK.
+- Docker Desktop, o una instancia local de SQL Server donde el usuario tenga permisos para crear bases de datos.
+- Herramienta de línea de comandos de EF Core:
+
+```powershell
+dotnet tool install --global dotnet-ef
+```
+
+### Levantar la base de datos con Docker
+
+Desde la raíz del repositorio:
+
+1. Crear el archivo `.env` con la contraseña del motor. Está en `.gitignore`, por lo tanto no se versiona.
+
+```text
+MSSQL_SA_PASSWORD=Biblioteca_2026
+```
+
+2. Levantar el contenedor.
+
+```powershell
+docker compose up -d
+```
+
+3. Registrar la cadena de conexión fuera del repositorio.
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:LibraryCatalog" "Server=localhost,1433;Database=LibraryCatalog;User Id=sa;Password=Biblioteca_2026;TrustServerCertificate=True" --project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
+```
+
+4. Aplicar la migración.
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+dotnet ef database update --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
+```
+
+La variable `ASPNETCORE_ENVIRONMENT` con valor `Development` es obligatoria, porque los User Secrets solo se cargan en ese entorno. En `cmd` se define con `set ASPNETCORE_ENVIRONMENT=Development` y en Linux o macOS con `export`.
+
+### Alternativa sin Docker
+
+Con una instancia local de SQL Server basta con ajustar la cadena de `src/LibraryCatalog.Api/appsettings.json` y aplicar la migración. Se omiten los pasos 1 a 3.
+
+```json
+"ConnectionStrings": {
+  "LibraryCatalog": "Server=localhost;Database=LibraryCatalog;Trusted_Connection=True;TrustServerCertificate=True"
+}
+```
+
+### Modelo físico
+
+| Tabla | Columnas | Restricciones |
+|---|---|---|
+| `Autores` | `Id` uniqueidentifier, `Nombre` nvarchar(150) | Clave primaria en `Id` |
+| `Categorias` | `Id` uniqueidentifier, `Nombre` nvarchar(100) | Clave primaria en `Id`, índice único en `Nombre` |
+| `Libros` | `Id` uniqueidentifier, `Titulo` nvarchar(256), `ISBN` nvarchar(13), `AnioPublicacion` int, `AutorId`, `CategoriaId` | Clave primaria en `Id`, índice único en `ISBN`, índices en `AutorId` y `CategoriaId` |
+
+Las dos relaciones son uno a muchos. `Libros.AutorId` referencia `Autores.Id` y `Libros.CategoriaId` referencia `Categorias.Id`. Ambas se generan con `ON DELETE NO ACTION`, lo que impide eliminar un autor o una categoría que tenga libros asociados.
+
+Las longitudes de las columnas coinciden con las invariantes declaradas en las entidades del dominio.
+
+### Datos de prueba
+
+La migración incluye 6 autores, 5 categorías y 10 libros mediante `HasData`. Los identificadores son fijos y legibles, de modo que la migración es determinista y las consultas se pueden probar sin consultar antes la base.
+
+| Categoría | Id | Libros |
+|---|---|---|
+| Novela | `c0000000-0000-4000-8000-000000000001` | 3 |
+| Cuento | `c0000000-0000-4000-8000-000000000002` | 2 |
+| Ciencia ficción | `c0000000-0000-4000-8000-000000000003` | 2 |
+| Ingeniería de software | `c0000000-0000-4000-8000-000000000004` | 2 |
+| Historia | `c0000000-0000-4000-8000-000000000005` | 1 |
+
+Los libros van de `b0000000-0000-4000-8000-000000000001` a `b0000000-0000-4000-8000-000000000010`. Por ejemplo, `b0000000-0000-4000-8000-000000000008` corresponde a Clean Code.
+
+Los datos se declaran con objetos anónimos en lugar de instancias del dominio, porque el constructor de `Libro` genera el identificador con `Guid.CreateVersion7()` y eso haría que la migración cambiara en cada ejecución. Por la misma razón el ISBN se escribe ya normalizado: `HasData` no pasa por el constructor y por lo tanto no ejecuta la normalización del dominio.
+
+### Resiliencia de conexión
+
+El registro del contexto habilita `EnableRetryOnFailure` con 3 reintentos y 5 segundos de espera, más un `CommandTimeout` de 30 segundos. La base de datos es un proceso remoto y la conexión puede fallar de forma transitoria. Las consultas de esta versión son de solo lectura, por lo tanto idempotentes, y reintentarlas no produce efectos secundarios.
+
+La estrategia de reintentos es incompatible con transacciones iniciadas manualmente. Si en una fase futura se agregan comandos de escritura, deberán envolverse con `CreateExecutionStrategy`.
+
+### Verificación
+
+Estado de la migración:
+
+```powershell
+dotnet ef migrations list --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
+```
+
+Esquema, relaciones y datos:
+
+```powershell
+docker cp scripts/verificacion-catalogo.sql librarycatalog-sqlserver:/tmp/verificacion.sql
+docker exec librarycatalog-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Biblioteca_2026" -C -i /tmp/verificacion.sql
+```
+
+Resultado esperado: 6 autores, 5 categorías, 10 libros y 0 libros huérfanos.
+
+Reconstrucción completa desde cero, útil para comprobar que la migración es reproducible en cualquier equipo:
+
+```powershell
+dotnet ef database drop -f --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
+dotnet ef database update --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
+```
 
 ## Repositorio de lectura
 
@@ -253,7 +380,7 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 
 Infrastructure registra:
 
-- `LibraryCatalogDbContext` con SQL Server.
+- `LibraryCatalogDbContext` con SQL Server, reintentos ante fallos transitorios y tiempo límite de comando.
 - `ILibroRepository` con `LibroRepository` y ciclo de vida scoped.
 
 Application todavía no registra handlers porque los casos de uso CQRS están pendientes.
@@ -266,7 +393,9 @@ La aplicación lee la conexión desde:
 ConnectionStrings:LibraryCatalog
 ```
 
-La entrada versionada en `appsettings.json` está vacía. No deben subirse usuarios, contraseñas, tokens ni cadenas privadas al repositorio.
+La entrada versionada en `appsettings.json` contiene una cadena de desarrollo con autenticación integrada de Windows, que no incluye credenciales. No deben subirse usuarios, contraseñas, tokens ni cadenas privadas al repositorio. Cualquier cadena con contraseña, como la del contenedor de Docker, se registra con User Secrets.
+
+Si la cadena no está configurada, `AddInfrastructureServices` lanza una excepción con un mensaje explícito en lugar de fallar al abrir la conexión.
 
 Para configurar una conexión local con User Secrets:
 
@@ -300,6 +429,8 @@ Passed: 16
 Failed: 0
 ```
 
+La compilación y las pruebas del dominio no requieren base de datos. Para ejecutar consultas contra el catálogo sí es necesario que el motor esté disponible según la sección Base de datos.
+
 Al ejecutar la API, la terminal muestra las direcciones HTTP y HTTPS. El documento OpenAPI puede consultarse en:
 
 ```text
@@ -325,10 +456,10 @@ Las nuevas reglas del dominio deben incluir sus respectivas pruebas.
 
 ## Trabajo pendiente
 
-Las siguientes fases no forman parte de la entrega de arquitectura y dominio ya terminada:
+Las siguientes fases no forman parte de las entregas ya terminadas:
 
-1. Configurar la instancia local de SQL Server.
-2. Crear y aplicar la migración inicial.
+1. Configurar la instancia local de SQL Server. Completado.
+2. Crear y aplicar la migración inicial. Completado.
 3. Definir los DTO de salida.
 4. Implementar con CQRS las queries y handlers para:
    - Todos los libros.
@@ -336,17 +467,17 @@ Las siguientes fases no forman parte de la entrega de arquitectura y dominio ya 
    - Libros por categoría.
 5. Registrar los handlers mediante `AddApplicationServices`.
 6. Crear controladores y endpoints HTTP.
-7. Agregar datos iniciales o un mecanismo acordado para cargar información.
+7. Agregar datos iniciales o un mecanismo acordado para cargar información. Completado mediante `HasData` en la migración inicial.
 8. Crear pruebas para Application, Infrastructure y API.
 
 No implementar commands de escritura salvo que el alcance oficial sea modificado.
 
-## Comandos para una futura migración
+## Comandos de migración
 
-Cuando exista una cadena de conexión local válida y esté disponible `dotnet-ef`, la migración se puede crear desde la raíz con:
+Los comandos se ejecutan desde la raíz del repositorio con `dotnet-ef` disponible y una cadena de conexión válida. Crear una migración nueva:
 
 ```powershell
-dotnet ef migrations add InitialCreate `
+dotnet ef migrations add <NombreMigracion> `
   --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj `
   --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj `
   --output-dir Persistence/Migrations
@@ -360,7 +491,9 @@ dotnet ef database update `
   --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
 ```
 
-No ejecutar estos comandos contra una base compartida sin coordinarlo con el equipo.
+En `cmd` los comandos van en una sola línea, sin el acento invertido de continuación.
+
+No ejecutar estos comandos contra una base compartida sin coordinarlo con el equipo. Las migraciones existentes no se modifican ni se eliminan del repositorio: cualquier cambio de esquema se hace con una migración nueva.
 
 ## Handoff para integrantes y asistentes de IA
 
@@ -369,7 +502,7 @@ El siguiente bloque puede copiarse junto con este README al asistente que vaya a
 ```text
 Trabaja sobre el repositorio LibraryCatalog respetando el README como contexto técnico y fuente de verdad.
 
-El proyecto usa .NET 10, Clean Architecture, DDD, EF Core, SQL Server y CQRS. La primera versión es exclusivamente de consulta. La fase de arquitectura y dominio ya está terminada y verificada con 16 pruebas.
+El proyecto usa .NET 10, Clean Architecture, DDD, EF Core, SQL Server y CQRS. La primera versión es exclusivamente de consulta. Las fases de arquitectura y dominio, y de persistencia y base de datos, ya están terminadas. El dominio está verificado con 16 pruebas y la base de datos se crea con la migración InitialCreate, que incluye 6 autores, 5 categorías y 10 libros.
 
 Antes de modificar código:
 1. Revisa LibraryCatalog.slnx y el estado de Git.
@@ -379,16 +512,18 @@ Antes de modificar código:
 5. No agregues operaciones Create, Update o Delete.
 6. No cambies Libro-Autor a muchos-a-muchos.
 7. No incluyas credenciales ni cadenas privadas en archivos versionados.
+8. No modifiques ni elimines las migraciones existentes.
 
 Trabajo pendiente:
 - Crear los DTO de lectura.
 - Implementar las tres queries CQRS y sus handlers.
 - Registrar los handlers en AddApplicationServices.
 - Crear los endpoints de consulta.
-- Configurar la base local y crear la migración inicial cuando corresponda.
 - Añadir pruebas para cada nuevo caso de uso.
 
 Las consultas deben devolver autor y categoría, reutilizar ILibroRepository y aceptar CancellationToken. Las consultas de EF Core ya usan AsNoTracking e incluyen las navegaciones necesarias.
+
+Para probar contra datos reales, la categoría Novela es c0000000-0000-4000-8000-000000000001 y los libros van de b0000000-0000-4000-8000-000000000001 a b0000000-0000-4000-8000-000000000010.
 
 Al terminar cada bloque, ejecuta dotnet build y dotnet test. Mantén los commits pequeños y no mezcles cambios ajenos a la fase asignada.
 ```
@@ -398,6 +533,7 @@ Al terminar cada bloque, ejecuta dotnet build y dotnet test. Mantén los commits
 - La solución compila sin errores ni advertencias.
 - Todas las pruebas pasan.
 - La API inicia sin excepciones.
+- La base de datos se puede recrear desde cero con la migración inicial.
 - No se versionan secretos ni artefactos generados.
 - Las dependencias continúan apuntando hacia Domain.
 - El commit contiene un cambio lógico y revisable.
