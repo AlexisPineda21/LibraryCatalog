@@ -4,6 +4,31 @@ API de consulta para el catálogo de una biblioteca, desarrollada con .NET 10, A
 
 Este README documenta el contexto funcional, la arquitectura implementada y el estado exacto del proyecto. También funciona como handoff para integrantes del equipo o asistentes de IA que deban continuar las siguientes fases.
 
+## Tabla de contenido
+
+1. [Contexto del proyecto](#contexto-del-proyecto)
+2. [Tecnologías](#tecnologías)
+3. [Distribución del trabajo](#distribución-del-trabajo)
+4. [Estado actual](#estado-actual)
+5. [Estructura de la solución](#estructura-de-la-solución)
+6. [Dependencias entre capas](#dependencias-entre-capas)
+7. [Responsabilidad de cada capa](#responsabilidad-de-cada-capa)
+8. [Modelo de dominio](#modelo-de-dominio)
+9. [Persistencia con Entity Framework Core](#persistencia-con-entity-framework-core)
+10. [Base de datos](#base-de-datos)
+11. [Repositorio de lectura](#repositorio-de-lectura)
+12. [Casos de uso CQRS](#casos-de-uso-cqrs)
+13. [Inyección de dependencias](#inyección-de-dependencias)
+14. [Configuración y secretos](#configuración-y-secretos)
+15. [Compilar y ejecutar](#compilar-y-ejecutar)
+16. [Pruebas existentes](#pruebas-existentes)
+17. [Trabajo pendiente](#trabajo-pendiente)
+18. [Comandos de migración](#comandos-de-migración)
+19. [Handoff para integrantes y asistentes de IA](#handoff-para-integrantes-y-asistentes-de-ia)
+20. [Criterios para considerar terminada una fase](#criterios-para-considerar-terminada-una-fase)
+
+---
+
 ## Contexto del proyecto
 
 Una biblioteca necesita organizar y consultar la información existente de su catálogo. El sistema debe trabajar con:
@@ -14,7 +39,7 @@ Una biblioteca necesita organizar y consultar la información existente de su ca
 
 La primera versión es exclusivamente de lectura. No se requieren operaciones para registrar, modificar o eliminar información.
 
-Los tres casos de uso que se implementarán posteriormente mediante CQRS son:
+Los tres casos de uso se implementan mediante CQRS:
 
 1. Consultar todos los libros.
 2. Consultar un libro por su identificador.
@@ -33,9 +58,21 @@ Las respuestas deberán incluir, según corresponda, el identificador, título, 
 - OpenAPI.
 - Git y GitHub.
 
+## Distribución del trabajo
+
+| Parte | Responsable | Alcance | Estado |
+|---|---|---|---|
+| Arquitectura inicial | Jacobo | Solución, capas y dirección de dependencias | ✅ Completado |
+| Persistencia | Felipe | SQL Server, Entity Framework Core, migración y datos de prueba | ✅ Completado |
+| Parte 4 — CQRS: Query 2 + Query 3 | Danna | `LibroDto`, consulta por ID y consulta por categoría con sus handlers | ✅ Completado |
+| CQRS: Query 1 | Julián | Consulta de todos los libros y su handler | ⏳ Pendiente |
+| Integración | Alexis | API, endpoints, integración, pruebas finales y GitHub | ⏳ Pendiente |
+
+Cada integrante trabaja solo dentro de su alcance. Los cambios de una parte no deben modificar ni sobrescribir el trabajo de otra.
+
 ## Estado actual
 
-Las fases de arquitectura y dominio, y de persistencia y base de datos, están terminadas.
+Las fases de arquitectura y dominio, y de persistencia y base de datos, están terminadas. La fase de casos de uso CQRS está en progreso.
 
 Actualmente el repositorio contiene:
 
@@ -56,8 +93,41 @@ Actualmente el repositorio contiene:
 - Resiliencia de conexión ante fallos transitorios de red.
 - `docker-compose.yml` para levantar SQL Server como proceso independiente.
 - Script SQL de verificación de esquema, relaciones y datos.
+- `LibroDto` y las queries 2 y 3 con sus handlers en la capa Application.
 
-Todavía no existen queries CQRS, handlers ni endpoints del catálogo. Por ese motivo, el documento OpenAPI presenta actualmente una colección `paths` vacía. Este es el comportamiento esperado.
+### Avance de los casos de uso
+
+| Caso de uso | Estado |
+|---|---|
+| `LibroDto` | ✅ Completado |
+| Query 1 — Todos los libros | ⏳ Pendiente |
+| Query 2 — Libro por ID | ✅ Completado |
+| Query 3 — Libros por categoría | ✅ Completado |
+| Registro de handlers | ⏳ Pendiente |
+| Endpoints HTTP | ⏳ Pendiente |
+| Pruebas de Application/API | ⏳ Pendiente |
+
+La API todavía no expone los endpoints de los casos de uso CQRS. Por ese motivo, el documento OpenAPI presenta actualmente una colección `paths` vacía. Este es el comportamiento esperado hasta la fase de integración con la API.
+
+### Validación de la solución
+
+La solución completa fue compilada desde la raíz del repositorio mediante:
+
+```powershell
+dotnet build
+```
+
+Resultado obtenido:
+
+```text
+LibraryCatalog.Domain           OK
+LibraryCatalog.Application      OK
+LibraryCatalog.Domain.Tests     OK
+LibraryCatalog.Infrastructure   OK
+LibraryCatalog.Api              OK
+
+Compilación realizada correctamente
+```
 
 ## Estructura de la solución
 
@@ -88,14 +158,28 @@ src/
 ├── LibraryCatalog.Domain/
 │   ├── Entities/
 │   └── Exceptions/
+│
 ├── LibraryCatalog.Application/
-│   └── Contracts/Repositories/
+│   ├── Contracts/
+│   │   └── Repositories/
+│   │       └── ILibroRepository.cs
+│   └── Queries/
+│       ├── DTOs/
+│       │   └── LibroDto.cs
+│       ├── GetBookById/
+│       │   ├── GetBookByIdQuery.cs
+│       │   └── GetBookByIdHandler.cs
+│       └── GetBooksByCategory/
+│           ├── GetBooksByCategoryQuery.cs
+│           └── GetBooksByCategoryHandler.cs
+│
 ├── LibraryCatalog.Infrastructure/
 │   └── Persistence/
 │       ├── Configurations/
 │       ├── Migrations/
 │       ├── Repositories/
 │       └── Seed/
+│
 └── LibraryCatalog.Api/
 
 tests/
@@ -139,7 +223,13 @@ Contiene entidades, relaciones conceptuales, reglas de negocio y excepciones pro
 
 ### Application
 
-Contiene contratos y será responsable de los casos de uso CQRS, DTO y handlers. Actualmente expone `ILibroRepository` y el punto de registro `AddApplicationServices`.
+Contiene contratos y los casos de uso CQRS, DTO y handlers. Actualmente contiene:
+
+- `ILibroRepository`.
+- `LibroDto`.
+- Query 2 y su handler.
+- Query 3 y su handler.
+- El punto de registro `AddApplicationServices`.
 
 ### Infrastructure
 
@@ -147,7 +237,7 @@ Implementa persistencia con EF Core y SQL Server. Contiene el contexto, configur
 
 ### API
 
-Es el punto de composición y ejecución. Registra Application e Infrastructure, controladores y OpenAPI. Los endpoints se agregarán en una fase posterior.
+Es el punto de composición y ejecución. Registra Application e Infrastructure, controladores y OpenAPI. Los endpoints de los casos de uso CQRS se agregarán en una fase posterior.
 
 ## Modelo de dominio
 
@@ -233,11 +323,11 @@ Configuración relevante:
 - `DeleteBehavior.Restrict` en ambas relaciones.
 - Acceso por campo para las colecciones privadas de libros.
 
-La migración inicial ya existe y está documentada en la sección Base de datos.
+La migración inicial ya existe y está documentada en la sección [Base de datos](#base-de-datos).
 
 ## Base de datos
 
-El esquema y los datos de prueba se crean a partir de la migración `InitialCreate`, por lo que cualquier integrante levanta una base idéntica sin ejecutar scripts manuales.
+El esquema y los datos de prueba se crean a partir de la migración `InitialCreate`, por lo que cualquier integrante puede levantar una base idéntica sin ejecutar scripts manuales.
 
 ### Requisitos
 
@@ -253,32 +343,32 @@ dotnet tool install --global dotnet-ef
 
 Desde la raíz del repositorio:
 
-1. Crear el archivo `.env` con la contraseña del motor. Está en `.gitignore`, por lo tanto no se versiona.
+**1. Crear el archivo `.env`** con la contraseña del motor. Está en `.gitignore`, por lo tanto no se versiona.
 
 ```text
 MSSQL_SA_PASSWORD=Biblioteca_2026
 ```
 
-2. Levantar el contenedor.
+**2. Levantar el contenedor.**
 
 ```powershell
 docker compose up -d
 ```
 
-3. Registrar la cadena de conexión fuera del repositorio.
+**3. Registrar la cadena de conexión fuera del repositorio.**
 
 ```powershell
 dotnet user-secrets set "ConnectionStrings:LibraryCatalog" "Server=localhost,1433;Database=LibraryCatalog;User Id=sa;Password=Biblioteca_2026;TrustServerCertificate=True" --project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
 ```
 
-4. Aplicar la migración.
+**4. Aplicar la migración.**
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 dotnet ef database update --project src/LibraryCatalog.Infrastructure/LibraryCatalog.Infrastructure.csproj --startup-project src/LibraryCatalog.Api/LibraryCatalog.Api.csproj
 ```
 
-La variable `ASPNETCORE_ENVIRONMENT` con valor `Development` es obligatoria, porque los User Secrets solo se cargan en ese entorno. En `cmd` se define con `set ASPNETCORE_ENVIRONMENT=Development` y en Linux o macOS con `export`.
+> La variable `ASPNETCORE_ENVIRONMENT` con valor `Development` es obligatoria, porque los User Secrets solo se cargan en ese entorno. En `cmd` se define con `set ASPNETCORE_ENVIRONMENT=Development` y en Linux o macOS con `export`.
 
 ### Alternativa sin Docker
 
@@ -314,7 +404,7 @@ La migración incluye 6 autores, 5 categorías y 10 libros mediante `HasData`. L
 | Ingeniería de software | `c0000000-0000-4000-8000-000000000004` | 2 |
 | Historia | `c0000000-0000-4000-8000-000000000005` | 1 |
 
-Los libros van de `b0000000-0000-4000-8000-000000000001` a `b0000000-0000-4000-8000-000000000010`. Por ejemplo, `b0000000-0000-4000-8000-000000000008` corresponde a Clean Code.
+Los libros van de `b0000000-0000-4000-8000-000000000001` a `b0000000-0000-4000-8000-000000000010`. Por ejemplo, `b0000000-0000-4000-8000-000000000008` corresponde a *Clean Code*.
 
 Los datos se declaran con objetos anónimos en lugar de instancias del dominio, porque el constructor de `Libro` genera el identificador con `Guid.CreateVersion7()` y eso haría que la migración cambiara en cada ejecución. Por la misma razón el ISBN se escribe ya normalizado: `HasData` no pasa por el constructor y por lo tanto no ejecuta la normalización del dominio.
 
@@ -350,7 +440,7 @@ dotnet ef database update --project src/LibraryCatalog.Infrastructure/LibraryCat
 
 ## Repositorio de lectura
 
-`ILibroRepository` define solamente las operaciones requeridas por los futuros casos de uso:
+`ILibroRepository` define las operaciones requeridas por los casos de uso:
 
 ```csharp
 Task<IReadOnlyCollection<Libro>> ObtenerTodosAsync(
@@ -367,7 +457,100 @@ Task<IReadOnlyCollection<Libro>> ObtenerPorCategoriaAsync(
 
 `LibroRepository` implementa estas operaciones mediante consultas `AsNoTracking`, incluyendo `Autor` y `Categoria` y ordenando las colecciones por título.
 
+Los handlers implementados reutilizan estas abstracciones y no acceden directamente al contexto de EF Core.
+
 No se debe agregar un repositorio genérico con `Create`, `Update` o `Delete`, porque esas operaciones no pertenecen a esta versión.
+
+## Casos de uso CQRS
+
+### DTO de lectura
+
+El DTO utilizado por las queries es:
+
+```csharp
+public sealed record LibroDto(
+    Guid Id,
+    string Titulo,
+    string ISBN,
+    int AnioPublicacion,
+    Guid AutorId,
+    string Autor,
+    Guid CategoriaId,
+    string Categoria);
+```
+
+El DTO evita exponer directamente las entidades de dominio como respuesta de los casos de uso de lectura.
+
+### Características comunes de los handlers
+
+- Reutilizan `ILibroRepository`.
+- Proyectan las entidades de dominio hacia `LibroDto`.
+- Incluyen la información del autor y la categoría.
+- Aceptan `CancellationToken`.
+
+### Query 1 — Consultar todos los libros
+
+**Estado:** ⏳ Pendiente.
+
+**Responsable:** Julián.
+
+Debe utilizar `ObtenerTodosAsync()` y retornar una colección de `LibroDto` con los datos de lectura del catálogo.
+
+### Query 2 — Consultar un libro por ID
+
+**Estado:** ✅ Completado.
+
+Archivos:
+
+```text
+src/LibraryCatalog.Application/Queries/GetBookById/
+├── GetBookByIdQuery.cs
+└── GetBookByIdHandler.cs
+```
+
+**Responsable:** Danna.
+
+Busca un libro específico mediante su `Guid`.
+
+```text
+GetBookByIdQuery
+       ↓
+GetBookByIdHandler
+       ↓
+ILibroRepository.ObtenerPorIdAsync()
+       ↓
+LibroDto
+```
+
+El handler utiliza `ObtenerPorIdAsync()` y retorna un `LibroDto` cuando encuentra el libro. El resultado incluye Id, título, ISBN, año de publicación, autor y categoría.
+
+### Query 3 — Consultar libros por categoría
+
+**Estado:** ✅ Completado.
+
+Archivos:
+
+```text
+src/LibraryCatalog.Application/Queries/GetBooksByCategory/
+├── GetBooksByCategoryQuery.cs
+└── GetBooksByCategoryHandler.cs
+```
+
+**Responsable:** Danna.
+
+Busca todos los libros pertenecientes a una categoría.
+
+```text
+GetBooksByCategoryQuery
+       ↓
+GetBooksByCategoryHandler
+       ↓
+ILibroRepository.ObtenerPorCategoriaAsync()
+       ↓
+Colección de LibroDto
+```
+
+El handler utiliza `ObtenerPorCategoriaAsync()` y retorna una colección de `LibroDto`. Cada resultado incluye Id, título, ISBN, año de publicación, autor y categoría.
 
 ## Inyección de dependencias
 
@@ -383,7 +566,9 @@ Infrastructure registra:
 - `LibraryCatalogDbContext` con SQL Server, reintentos ante fallos transitorios y tiempo límite de comando.
 - `ILibroRepository` con `LibroRepository` y ciclo de vida scoped.
 
-Application todavía no registra handlers porque los casos de uso CQRS están pendientes.
+### Estado del registro de handlers
+
+Los handlers de Query 2 y Query 3 ya están implementados en Application, pero todavía no se han registrado en `AddApplicationServices`. Este paso corresponde a la integración posterior de la capa Application.
 
 ## Configuración y secretos
 
@@ -429,7 +614,7 @@ Passed: 16
 Failed: 0
 ```
 
-La compilación y las pruebas del dominio no requieren base de datos. Para ejecutar consultas contra el catálogo sí es necesario que el motor esté disponible según la sección Base de datos.
+La compilación y las pruebas del dominio no requieren base de datos. Para ejecutar consultas contra el catálogo sí es necesario que el motor esté disponible según la sección [Base de datos](#base-de-datos).
 
 Al ejecutar la API, la terminal muestra las direcciones HTTP y HTTPS. El documento OpenAPI puede consultarse en:
 
@@ -452,29 +637,34 @@ El proyecto `LibraryCatalog.Domain.Tests` contiene 16 pruebas para:
 - Año cero o futuro.
 - Autor y categoría obligatorios.
 
-Las nuevas reglas del dominio deben incluir sus respectivas pruebas.
+Las pruebas específicas de Query 2 y Query 3 todavía están pendientes. Las nuevas reglas del dominio deben incluir sus respectivas pruebas.
 
 ## Trabajo pendiente
 
-Las siguientes fases no forman parte de las entregas ya terminadas:
+### Fases completadas
 
-1. Configurar la instancia local de SQL Server. Completado.
-2. Crear y aplicar la migración inicial. Completado.
-3. Definir los DTO de salida.
-4. Implementar con CQRS las queries y handlers para:
-   - Todos los libros.
-   - Libro por ID.
-   - Libros por categoría.
-5. Registrar los handlers mediante `AddApplicationServices`.
-6. Crear controladores y endpoints HTTP.
-7. Agregar datos iniciales o un mecanismo acordado para cargar información. Completado mediante `HasData` en la migración inicial.
-8. Crear pruebas para Application, Infrastructure y API.
+- ✅ Configurar la instancia local de SQL Server.
+- ✅ Crear y aplicar la migración inicial.
+- ✅ Incluir datos iniciales mediante `HasData`.
+- ✅ Definir el DTO de salida `LibroDto`.
+- ✅ Implementar Query 2 y su handler.
+- ✅ Implementar Query 3 y su handler.
+
+### Fases por completar
+
+1. Query 1 — consultar todos los libros.
+2. Registrar los handlers mediante `AddApplicationServices`.
+3. Crear controladores y endpoints HTTP para los casos de uso.
+4. Crear pruebas para Application, Infrastructure y API.
+5. Validar las consultas mediante la API y OpenAPI.
 
 No implementar commands de escritura salvo que el alcance oficial sea modificado.
 
 ## Comandos de migración
 
-Los comandos se ejecutan desde la raíz del repositorio con `dotnet-ef` disponible y una cadena de conexión válida. Crear una migración nueva:
+Los comandos se ejecutan desde la raíz del repositorio con `dotnet-ef` disponible y una cadena de conexión válida.
+
+Crear una migración nueva:
 
 ```powershell
 dotnet ef migrations add <NombreMigracion> `
@@ -493,7 +683,7 @@ dotnet ef database update `
 
 En `cmd` los comandos van en una sola línea, sin el acento invertido de continuación.
 
-No ejecutar estos comandos contra una base compartida sin coordinarlo con el equipo. Las migraciones existentes no se modifican ni se eliminan del repositorio: cualquier cambio de esquema se hace con una migración nueva.
+> No ejecutar estos comandos contra una base compartida sin coordinarlo con el equipo. Las migraciones existentes no se modifican ni se eliminan del repositorio: cualquier cambio de esquema se hace con una migración nueva.
 
 ## Handoff para integrantes y asistentes de IA
 
@@ -502,24 +692,34 @@ El siguiente bloque puede copiarse junto con este README al asistente que vaya a
 ```text
 Trabaja sobre el repositorio LibraryCatalog respetando el README como contexto técnico y fuente de verdad.
 
-El proyecto usa .NET 10, Clean Architecture, DDD, EF Core, SQL Server y CQRS. La primera versión es exclusivamente de consulta. Las fases de arquitectura y dominio, y de persistencia y base de datos, ya están terminadas. El dominio está verificado con 16 pruebas y la base de datos se crea con la migración InitialCreate, que incluye 6 autores, 5 categorías y 10 libros.
+El proyecto usa .NET 10, Clean Architecture, DDD, EF Core, SQL Server y CQRS. La primera versión es exclusivamente de consulta.
+
+Las fases de arquitectura y dominio, y de persistencia y base de datos, ya están terminadas. El dominio está verificado con 16 pruebas y la base de datos se crea con la migración InitialCreate, que incluye 6 autores, 5 categorías y 10 libros.
+
+La capa Application ya contiene:
+- LibroDto.
+- Query 2: GetBookByIdQuery y GetBookByIdHandler.
+- Query 3: GetBooksByCategoryQuery y GetBooksByCategoryHandler.
+
+Los handlers reutilizan ILibroRepository, aceptan CancellationToken y proyectan las entidades a LibroDto.
 
 Antes de modificar código:
 1. Revisa LibraryCatalog.slnx y el estado de Git.
 2. Lee las entidades y reglas existentes en LibraryCatalog.Domain.
-3. Lee ILibroRepository y LibroRepository antes de crear casos de uso.
+3. Lee ILibroRepository y LibroRepository antes de crear o modificar casos de uso.
 4. Conserva la dirección actual de dependencias entre proyectos.
 5. No agregues operaciones Create, Update o Delete.
 6. No cambies Libro-Autor a muchos-a-muchos.
 7. No incluyas credenciales ni cadenas privadas en archivos versionados.
 8. No modifiques ni elimines las migraciones existentes.
+9. No sobrescribas el trabajo de otros integrantes.
 
 Trabajo pendiente:
-- Crear los DTO de lectura.
-- Implementar las tres queries CQRS y sus handlers.
+- Implementar Query 1 y su handler.
 - Registrar los handlers en AddApplicationServices.
 - Crear los endpoints de consulta.
 - Añadir pruebas para cada nuevo caso de uso.
+- Integrar y validar la API.
 
 Las consultas deben devolver autor y categoría, reutilizar ILibroRepository y aceptar CancellationToken. Las consultas de EF Core ya usan AsNoTracking e incluyen las navegaciones necesarias.
 
@@ -531,9 +731,10 @@ Al terminar cada bloque, ejecuta dotnet build y dotnet test. Mantén los commits
 ## Criterios para considerar terminada una fase
 
 - La solución compila sin errores ni advertencias.
-- Todas las pruebas pasan.
+- Todas las pruebas correspondientes pasan.
 - La API inicia sin excepciones.
 - La base de datos se puede recrear desde cero con la migración inicial.
 - No se versionan secretos ni artefactos generados.
 - Las dependencias continúan apuntando hacia Domain.
 - El commit contiene un cambio lógico y revisable.
+- Los cambios de cada integrante permanecen separados y son integrables.
