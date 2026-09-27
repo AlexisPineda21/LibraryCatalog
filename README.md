@@ -8,20 +8,20 @@ Este README documenta el contexto funcional, la arquitectura implementada y el e
 
 1. [Contexto del proyecto](#contexto-del-proyecto)
 2. [Tecnologías](#tecnologías)
-3. [Distribución del trabajo](#distribución-del-trabajo)
-4. [Estado actual](#estado-actual)
-5. [Estructura de la solución](#estructura-de-la-solución)
-6. [Dependencias entre capas](#dependencias-entre-capas)
-7. [Responsabilidad de cada capa](#responsabilidad-de-cada-capa)
-8. [Modelo de dominio](#modelo-de-dominio)
-9. [Persistencia con Entity Framework Core](#persistencia-con-entity-framework-core)
-10. [Base de datos](#base-de-datos)
-11. [Repositorio de lectura](#repositorio-de-lectura)
-12. [Casos de uso CQRS](#casos-de-uso-cqrs)
-13. [Inyección de dependencias](#inyección-de-dependencias)
-14. [Configuración y secretos](#configuración-y-secretos)
-15. [Compilar y ejecutar](#compilar-y-ejecutar)
-16. [Pruebas existentes](#pruebas-existentes)
+3. [Estado actual](#estado-actual)
+4. [Estructura de la solución](#estructura-de-la-solución)
+5. [Dependencias entre capas](#dependencias-entre-capas)
+6. [Responsabilidad de cada capa](#responsabilidad-de-cada-capa)
+7. [Modelo de dominio](#modelo-de-dominio)
+8. [Persistencia con Entity Framework Core](#persistencia-con-entity-framework-core)
+9. [Base de datos](#base-de-datos)
+10. [Repositorio de lectura](#repositorio-de-lectura)
+11. [Casos de uso CQRS](#casos-de-uso-cqrs)
+12. [Inyección de dependencias](#inyección-de-dependencias)
+13. [Configuración y secretos](#configuración-y-secretos)
+14. [Compilar y ejecutar](#compilar-y-ejecutar)
+15. [Pruebas existentes](#pruebas-existentes)
+16. [Pruebas de la API](#pruebas-de-la-api)
 17. [Trabajo pendiente](#trabajo-pendiente)
 18. [Comandos de migración](#comandos-de-migración)
 19. [Handoff para integrantes y asistentes de IA](#handoff-para-integrantes-y-asistentes-de-ia)
@@ -58,21 +58,17 @@ Las respuestas deberán incluir, según corresponda, el identificador, título, 
 - OpenAPI.
 - Git y GitHub.
 
-## Distribución del trabajo
-
-| Parte | Responsable | Alcance | Estado |
-|---|---|---|---|
-| Arquitectura inicial | Jacobo | Solución, capas y dirección de dependencias | ✅ Completado |
-| Persistencia | Felipe | SQL Server, Entity Framework Core, migración y datos de prueba | ✅ Completado |
-| Parte 4 — CQRS: Query 2 + Query 3 | Danna | `LibroDto`, consulta por ID y consulta por categoría con sus handlers | ✅ Completado |
-| Parte 3 — CQRS: Query 1 | Julián | Consulta de todos los libros, su handler y el endpoint `GET /api/libros` | ✅ Completado |
-| Integración | Alexis | API, endpoints, integración, pruebas finales y GitHub | ⏳ Pendiente |
-
-Cada integrante trabaja solo dentro de su alcance. Los cambios de una parte no deben modificar ni sobrescribir el trabajo de otra.
-
 ## Estado actual
 
-Las fases de arquitectura y dominio, y de persistencia y base de datos, están terminadas. Las tres queries CQRS están implementadas en la capa Application. La integración con la API está en progreso: la Query 1 ya se expone mediante `GET /api/libros`.
+Todas las fases están terminadas. Las tres queries CQRS están implementadas en la capa Application, sus handlers están registrados y la API expone un endpoint por cada caso de uso. Los tres endpoints se probaron contra la base de datos con los datos de prueba (ver [Pruebas de la API](#pruebas-de-la-api)).
+
+### Endpoints disponibles
+
+| Método | Ruta | Caso de uso | Respuestas |
+|---|---|---|---|
+| `GET` | `/api/libros` | Query 1 — Todos los libros | `200 OK` con la lista (vacía si no hay libros) |
+| `GET` | `/api/libros/{id}` | Query 2 — Libro por ID | `200 OK` con el libro, `404 Not Found` si no existe |
+| `GET` | `/api/libros/categoria/{categoriaId}` | Query 3 — Libros por categoría | `200 OK` con la lista (vacía si la categoría no tiene libros) |
 
 Actualmente el repositorio contiene:
 
@@ -95,21 +91,21 @@ Actualmente el repositorio contiene:
 - Script SQL de verificación de esquema, relaciones y datos.
 - `LibroDto` y las queries 2 y 3 con sus handlers en la capa Application.
 - Query 1 y su handler en la capa Application, registrado en `AddApplicationServices`.
-- `LibrosController` con el endpoint `GET /api/libros` para consultar todos los libros.
+- Handlers de las tres queries registrados en `AddApplicationServices`.
+- `LibrosController` con los tres endpoints de consulta.
+- Archivo `LibraryCatalog.Api.http` con las peticiones de prueba de los tres endpoints.
 
 ### Avance de los casos de uso
 
 | Caso de uso | Estado |
 |---|---|
-| `LibroDto` | ✅ Completado |
-| Query 1 — Todos los libros | ✅ Completado |
-| Query 2 — Libro por ID | ✅ Completado |
-| Query 3 — Libros por categoría | ✅ Completado |
-| Registro de handlers | ⏳ Parcial — registrado el de Query 1 |
-| Endpoints HTTP | ⏳ Parcial — `GET /api/libros` (Query 1) |
-| Pruebas de Application/API | ⏳ Pendiente |
-
-La API expone actualmente el endpoint `GET /api/libros` de la Query 1. Los endpoints de la Query 2 y la Query 3 se agregarán en la fase de integración con la API.
+| `LibroDto` | Completado |
+| Query 1 — Todos los libros | Completado |
+| Query 2 — Libro por ID | Completado |
+| Query 3 — Libros por categoría | Completado |
+| Registro de handlers | Completado (las tres queries) |
+| Endpoints HTTP | Completado (los tres endpoints) |
+| Pruebas de la API | Validadas manualmente contra la base de datos |
 
 ### Validación de la solución
 
@@ -245,7 +241,7 @@ Implementa persistencia con EF Core y SQL Server. Contiene el contexto, configur
 
 ### API
 
-Es el punto de composición y ejecución. Registra Application e Infrastructure, controladores y OpenAPI. Contiene `LibrosController`, que expone `GET /api/libros` para la Query 1. Los endpoints de la Query 2 y la Query 3 se agregarán en la fase de integración.
+Es el punto de composición y ejecución. Registra Application e Infrastructure, controladores y OpenAPI. Contiene `LibrosController`, que recibe los tres handlers por inyección de dependencias y expone un endpoint por cada query. El controlador no contiene lógica de negocio: construye la query, invoca el handler y traduce el resultado a una respuesta HTTP.
 
 ## Modelo de dominio
 
@@ -504,7 +500,7 @@ El DTO evita exponer directamente las entidades de dominio como respuesta de los
 
 ### Query 1 — Consultar todos los libros
 
-**Estado:** ✅ Completado.
+**Estado:** Completado.
 
 Archivos:
 
@@ -516,8 +512,6 @@ src/LibraryCatalog.Application/Queries/GetBooksList/
 src/LibraryCatalog.Api/Controllers/
 └── LibrosController.cs
 ```
-
-**Responsable:** Julián.
 
 Obtiene el listado completo de libros registrados en el catálogo.
 
@@ -562,7 +556,7 @@ Con la base de datos de prueba, el endpoint retorna los 10 libros. Si no hay lib
 
 ### Query 2 — Consultar un libro por ID
 
-**Estado:** ✅ Completado.
+**Estado:** Completado.
 
 Archivos:
 
@@ -572,25 +566,44 @@ src/LibraryCatalog.Application/Queries/GetBookById/
 └── GetBookByIdHandler.cs
 ```
 
-**Responsable:** Danna.
-
 Busca un libro específico mediante su `Guid`.
 
 ```text
+GET /api/libros/{id}
+       ↓
+LibrosController.GetById
+       ↓
 GetBookByIdQuery
        ↓
 GetBookByIdHandler
        ↓
 ILibroRepository.ObtenerPorIdAsync()
        ↓
-LibroDto
+LibroDto o null
 ```
 
 El handler utiliza `ObtenerPorIdAsync()` y retorna un `LibroDto` cuando encuentra el libro. El resultado incluye Id, título, ISBN, año de publicación, autor y categoría.
 
+Si el libro no existe, el handler retorna `null` y el controlador responde `404 Not Found`.
+
+Ejemplo: `GET /api/libros/b0000000-0000-4000-8000-000000000008` (`200 OK`):
+
+```json
+{
+  "id": "b0000000-0000-4000-8000-000000000008",
+  "titulo": "Clean Code",
+  "isbn": "9780132350884",
+  "anioPublicacion": 2008,
+  "autorId": "a0000000-0000-4000-8000-000000000005",
+  "autor": "Robert C. Martin",
+  "categoriaId": "c0000000-0000-4000-8000-000000000004",
+  "categoria": "Ingeniería de software"
+}
+```
+
 ### Query 3 — Consultar libros por categoría
 
-**Estado:** ✅ Completado.
+**Estado:** Completado.
 
 Archivos:
 
@@ -600,11 +613,13 @@ src/LibraryCatalog.Application/Queries/GetBooksByCategory/
 └── GetBooksByCategoryHandler.cs
 ```
 
-**Responsable:** Danna.
-
 Busca todos los libros pertenecientes a una categoría.
 
 ```text
+GET /api/libros/categoria/{categoriaId}
+       ↓
+LibrosController.GetByCategoria
+       ↓
 GetBooksByCategoryQuery
        ↓
 GetBooksByCategoryHandler
@@ -615,6 +630,8 @@ Colección de LibroDto
 ```
 
 El handler utiliza `ObtenerPorCategoriaAsync()` y retorna una colección de `LibroDto`. Cada resultado incluye Id, título, ISBN, año de publicación, autor y categoría.
+
+Si la categoría no tiene libros o no existe, el endpoint responde `200 OK` con una colección vacía (`[]`). Con los datos de prueba, la categoría Novela (`c0000000-0000-4000-8000-000000000001`) retorna 3 libros.
 
 ## Inyección de dependencias
 
@@ -630,18 +647,15 @@ Infrastructure registra:
 - `LibraryCatalogDbContext` con SQL Server, reintentos ante fallos transitorios y tiempo límite de comando.
 - `ILibroRepository` con `LibroRepository` y ciclo de vida scoped.
 
-Application registra:
-
-- `GetBooksListHandler` con ciclo de vida scoped.
-
-### Estado del registro de handlers
-
-El handler de la Query 1 ya está registrado en `AddApplicationServices`. Los handlers de Query 2 y Query 3 ya están implementados en Application, pero todavía no se han registrado. Deben agregarse con el mismo patrón:
+Application registra los tres handlers con ciclo de vida scoped:
 
 ```csharp
+services.AddScoped<GetBooksListHandler>();
 services.AddScoped<GetBookByIdHandler>();
 services.AddScoped<GetBooksByCategoryHandler>();
 ```
+
+`LibrosController` recibe los tres handlers por constructor. Si se agrega una nueva query, su handler debe registrarse aquí antes de inyectarlo en un controlador; de lo contrario la API falla al resolver el controlador.
 
 ## Configuración y secretos
 
@@ -695,13 +709,29 @@ Al ejecutar la API, la terminal muestra las direcciones HTTP y HTTPS. El documen
 https://localhost:<PUERTO>/openapi/v1.json
 ```
 
-El listado de libros de la Query 1 puede consultarse en:
+Los endpoints pueden consultarse desde el navegador o con el archivo `src/LibraryCatalog.Api/LibraryCatalog.Api.http` desde Visual Studio:
 
 ```text
 http://localhost:5169/api/libros
+http://localhost:5169/api/libros/{id}
+http://localhost:5169/api/libros/categoria/{categoriaId}
 ```
 
-Un `404` en la ruta `/` es normal porque todavía no hay un endpoint raíz. La API se detiene con `Ctrl + C`.
+Un `404` en la ruta `/` es normal porque no hay un endpoint raíz. La API se detiene con `Ctrl + C`.
+
+El aviso `Failed to determine the https port for redirect` al ejecutar con el perfil `http` es esperado y no afecta el funcionamiento.
+
+### Conflicto con un SQL Server instalado en Windows
+
+Si el equipo ya tiene SQL Server instalado como servicio de Windows (instancia `MSSQLSERVER`), ese servicio ocupa el puerto `1433` y responde en lugar del contenedor. El síntoma es `Login failed for user 'sa'` al aplicar la migración, aunque la contraseña sea correcta.
+
+Para usar el contenedor, detener el servicio local desde una terminal de administrador antes de ejecutar `docker compose up -d`:
+
+```powershell
+Stop-Service MSSQLSERVER
+```
+
+Alternativa: no usar Docker y trabajar con la instancia local, eliminando el User Secret para que se use la cadena de `appsettings.json`.
 
 ## Pruebas existentes
 
@@ -716,27 +746,51 @@ El proyecto `LibraryCatalog.Domain.Tests` contiene 16 pruebas para:
 - Año cero o futuro.
 - Autor y categoría obligatorios.
 
-Las pruebas específicas de Query 1, Query 2 y Query 3 todavía están pendientes. La Query 1 se validó manualmente mediante `GET /api/libros` contra la base de datos con los datos de prueba. Las nuevas reglas del dominio deben incluir sus respectivas pruebas.
+Resultado de `dotnet test`: 16 pruebas, 16 aprobadas, 0 fallidas.
+
+Las nuevas reglas del dominio deben incluir sus respectivas pruebas.
+
+## Pruebas de la API
+
+Los tres endpoints se validaron manualmente con la API en ejecución, contra SQL Server en Docker y la base creada con la migración `InitialCreate`. Cada petición recorre la solución completa: controlador, handler, repositorio, EF Core y SQL Server. Las peticiones están guardadas en `src/LibraryCatalog.Api/LibraryCatalog.Api.http`.
+
+| # | Caso | Petición | Resultado esperado | Resultado |
+|---|---|---|---|---|
+| 1 | Todos los libros | `GET /api/libros` | `200 OK` con 10 libros ordenados por título, con autor y categoría | Correcto |
+| 2 | Libro existente | `GET /api/libros/b0000000-0000-4000-8000-000000000008` | `200 OK` con *Clean Code*, autor Robert C. Martin | Correcto |
+| 3 | Libro inexistente | `GET /api/libros/00000000-0000-0000-0000-000000000000` | `404 Not Found` | Correcto |
+| 4 | Categoría con libros | `GET /api/libros/categoria/c0000000-0000-4000-8000-000000000001` | `200 OK` con los 3 libros de Novela | Correcto |
+| 5 | Categoría sin libros | `GET /api/libros/categoria/00000000-0000-0000-0000-000000000000` | `200 OK` con `[]` | Correcto |
+
+Validaciones complementarias:
+
+- `dotnet build`: la solución compila sin errores.
+- `dotnet test`: 16 de 16 pruebas del dominio aprobadas.
+- `dotnet ef database update`: la base se crea desde cero con la migración inicial.
+- El log de EF Core confirma que cada consulta incluye los `JOIN` con `Autores` y `Categorias`.
 
 ## Trabajo pendiente
 
 ### Fases completadas
 
-- ✅ Configurar la instancia local de SQL Server.
-- ✅ Crear y aplicar la migración inicial.
-- ✅ Incluir datos iniciales mediante `HasData`.
-- ✅ Definir el DTO de salida `LibroDto`.
-- ✅ Implementar Query 1 y su handler.
-- ✅ Implementar Query 2 y su handler.
-- ✅ Implementar Query 3 y su handler.
-- ✅ Registrar el handler de Query 1 y exponer `GET /api/libros`.
+- Configurar la instancia local de SQL Server.
+- Crear y aplicar la migración inicial.
+- Incluir datos iniciales mediante `HasData`.
+- Definir el DTO de salida `LibroDto`.
+- Implementar Query 1 y su handler.
+- Implementar Query 2 y su handler.
+- Implementar Query 3 y su handler.
+- Registrar el handler de Query 1 y exponer `GET /api/libros`.
+- Registrar los handlers de Query 2 y Query 3 en `AddApplicationServices`.
+- Exponer `GET /api/libros/{id}` y `GET /api/libros/categoria/{categoriaId}`.
+- Validar los tres endpoints contra la base de datos.
 
-### Fases por completar
+### Mejoras opcionales
 
-1. Registrar los handlers de Query 2 y Query 3 mediante `AddApplicationServices`.
-2. Agregar los endpoints de Query 2 y Query 3 en `LibrosController`.
-3. Crear pruebas para Application, Infrastructure y API.
-4. Validar las consultas mediante la API y OpenAPI.
+Fuera del alcance del Seguimiento 1:
+
+1. Pruebas automáticas para los handlers de Application.
+2. Pruebas de integración automáticas para la API.
 
 No implementar commands de escritura salvo que el alcance oficial sea modificado.
 
@@ -782,7 +836,7 @@ La capa Application ya contiene:
 - Query 2: GetBookByIdQuery y GetBookByIdHandler.
 - Query 3: GetBooksByCategoryQuery y GetBooksByCategoryHandler.
 
-La API ya contiene LibrosController con GET /api/libros (Query 1). El handler se registra en AddApplicationServices y se inyecta directamente en el controlador, sin mediador.
+La API contiene LibrosController con GET /api/libros (Query 1), GET /api/libros/{id} (Query 2, 404 si no existe) y GET /api/libros/categoria/{categoriaId} (Query 3). Los tres handlers se registran en AddApplicationServices y se inyectan directamente en el controlador, sin mediador. Los tres endpoints fueron validados contra la base de datos.
 
 Los handlers reutilizan ILibroRepository, aceptan CancellationToken y proyectan las entidades a LibroDto.
 
@@ -797,11 +851,9 @@ Antes de modificar código:
 8. No modifiques ni elimines las migraciones existentes.
 9. No sobrescribas el trabajo de otros integrantes.
 
-Trabajo pendiente:
-- Registrar los handlers de Query 2 y Query 3 en AddApplicationServices.
-- Agregar los endpoints de Query 2 y Query 3 en LibrosController.
-- Añadir pruebas para cada nuevo caso de uso.
-- Integrar y validar la API.
+El alcance del Seguimiento 1 está completo. Mejoras opcionales:
+- Añadir pruebas automáticas para los handlers.
+- Añadir pruebas de integración automáticas para la API.
 
 Las consultas deben devolver autor y categoría, reutilizar ILibroRepository y aceptar CancellationToken. Las consultas de EF Core ya usan AsNoTracking e incluyen las navegaciones necesarias.
 

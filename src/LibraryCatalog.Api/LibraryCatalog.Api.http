@@ -1,6 +1,23 @@
 @LibraryCatalog_HostAddress = http://localhost:5169
 
-GET {{LibraryCatalog_HostAddress}}/weatherforecast/
+### Query 1 - Todos los libros (esperado: 200 OK con 10 libros)
+GET {{LibraryCatalog_HostAddress}}/api/libros
+Accept: application/json
+
+### Query 2 - Libro por ID existente: Clean Code (esperado: 200 OK)
+GET {{LibraryCatalog_HostAddress}}/api/libros/b0000000-0000-4000-8000-000000000008
+Accept: application/json
+
+### Query 2 - Libro por ID inexistente (esperado: 404 Not Found)
+GET {{LibraryCatalog_HostAddress}}/api/libros/00000000-0000-0000-0000-000000000000
+Accept: application/json
+
+### Query 3 - Libros de la categoria Novela (esperado: 200 OK con 3 libros)
+GET {{LibraryCatalog_HostAddress}}/api/libros/categoria/c0000000-0000-4000-8000-000000000001
+Accept: application/json
+
+### Query 3 - Categoria sin libros (esperado: 200 OK con [])
+GET {{LibraryCatalog_HostAddress}}/api/libros/categoria/00000000-0000-0000-0000-000000000000
 Accept: application/json
 
 ###
